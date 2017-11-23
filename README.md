@@ -1,6 +1,6 @@
 # XEDq
 
-XEDq brings [Intel XED](https://github.com/intelxed/xed) powers into [Go](https://golang.org/) space.
+**XEDq** brings [Intel XED](https://github.com/intelxed/xed) powers into [Go](https://golang.org/) space.
 
 ## What it is
 
