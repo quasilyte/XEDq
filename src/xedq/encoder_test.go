@@ -8,26 +8,6 @@ func init() {
 	InitTables()
 }
 
-func runEncoderTests(t *testing.T, tests map[string][]*EncodeRequest) {
-	for encoding, requests := range tests {
-		for _, req := range requests {
-			have := req.EncodeHexString()
-			err := req.encoder.LastError()
-			if err != nil {
-				t.Errorf("%q encoding error:\n%s\n%s",
-					encoding, req, err.Error())
-				continue
-			}
-
-			want := encoding
-			if have != want {
-				t.Errorf("encoding mismatch:\n%s\nhave: %q\nwant: %q",
-					req, have, want)
-			}
-		}
-	}
-}
-
 func TestEncoderMode32Eosz8(t *testing.T) {
 	encoder := NewEncoder(EncoderMode32)
 
@@ -182,4 +162,24 @@ func TestEncoderMode64Eosz64(t *testing.T) {
 				SetDisp8(0x44),
 		},
 	})
+}
+
+func runEncoderTests(t *testing.T, tests map[string][]*EncodeRequest) {
+	for encoding, requests := range tests {
+		for _, req := range requests {
+			have := req.EncodeHexString()
+			err := req.encoder.LastError()
+			if err != nil {
+				t.Errorf("%q encoding error:\n%s\n%s",
+					encoding, req, err.Error())
+				continue
+			}
+
+			want := encoding
+			if have != want {
+				t.Errorf("encoding mismatch:\n%s\nhave: %q\nwant: %q",
+					req, have, want)
+			}
+		}
+	}
 }
