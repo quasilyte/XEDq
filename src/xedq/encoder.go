@@ -12,7 +12,8 @@ const (
 var (
 	errEncReqConvert = errors.New("encoder: request conversion failed")
 	errEncArgc       = errors.New("encoder: invalid operands count")
-	errNameLen       = errors.New("instruction name too long")
+
+	errNameLen = errors.New("instruction name too long")
 )
 
 // InitTables prepares XED for encoding/decoding requests.
@@ -29,11 +30,19 @@ func InitTables() {
 // Use Encoder.Copy to create a new instance of Encoder that have
 // same settings as the original, but can be safely transfered to
 // other goroutine.
+// As long as all Encoder requests are consumed by a single goroutine,
+// everything is fine.
 type Encoder struct {
 	tmpbuf buffer
 
 	mode xedState
 	err  error
+}
+
+// Copy returns Encoder deep copy.
+func (enc Encoder) Copy() Encoder {
+	enc.err = nil
+	return enc
 }
 
 // EncoderOption is a configuration function for NewEncoder.
@@ -79,20 +88,23 @@ func (enc *Encoder) Request(name string) *EncodeRequest {
 // encode assembles single encode request.
 // On error, nil is returned and enc.err is set to associated error value.
 // Returned slice is not shared.
-func (enc *Encoder) encode(req *EncodeRequest) []byte {
+
+// encode assembles single request to enc.tmpbuf.
+// Returns produced machine code length in bytes.
+// Caller should handle (consume) output right after the call.
+func (enc *Encoder) encode(req *EncodeRequest) (n int) {
 	if len(req.name) > bufferCapacity {
 		enc.err = errNameLen
-		return nil
+		return 0
 	}
 	if req.argc < 0 || req.argc > maxArgLimit {
 		enc.err = errEncArgc
-		return nil
+		return 0
 	}
 
 	iclass := newXEDIclass(req.name, &enc.tmpbuf)
 	inst := newXEDInst(&enc.mode, iclass, req)
+	n, enc.err = xedEncode(&inst, &enc.tmpbuf)
 
-	var code []byte
-	code, enc.err = xedEncode(&inst, &enc.tmpbuf)
-	return code
+	return n
 }
