@@ -17,8 +17,8 @@ func runEncoderTests(t *testing.T, tests map[string][]*EncodeRequest) {
 	for encoding, requests := range tests {
 		for _, req := range requests {
 			have := req.EncodeHexString()
-			err := req.encoder.err
-			if !err.Empty() {
+			err := req.encoder.LastError()
+			if err != nil {
 				t.Errorf("%q encoding error:\n%s\n%s",
 					encoding, req, err.Error())
 				continue
