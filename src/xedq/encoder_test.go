@@ -8,11 +8,6 @@ func init() {
 	InitTables()
 }
 
-type encoderTest struct {
-	req      *EncodeRequest
-	encoding string
-}
-
 func runEncoderTests(t *testing.T, tests map[string][]*EncodeRequest) {
 	for encoding, requests := range tests {
 		for _, req := range requests {
