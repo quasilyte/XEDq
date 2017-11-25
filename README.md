@@ -2,6 +2,11 @@
 
 **XEDq** brings [Intel XED](https://github.com/intelxed/xed) powers into [Go](https://golang.org/) space.
 
+## Warning: not even alpha
+
+This project is under active development and should not be used anywhere.  
+When the time is right, this warning will go away.
+
 ## What it is
 
 Convenient library built on top of **Intel XED** for encoding/decoding of 
