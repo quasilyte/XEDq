@@ -3,7 +3,6 @@ package xedq
 /*
 #cgo LDFLAGS: -lxed
 #include <xed/xed-interface.h>
-#include <stdlib.h>
 */
 import "C"
 
@@ -17,35 +16,32 @@ import (
 // that those functions are low-level and can be unsafe.
 
 // register holds XED register ID.
-type register uint16
+// TODO: rename to xedRegister?
+type xedRegister uint16
 
 // Constants that define register indexes from XED xed_reg_enum_t.
 const (
-	regGPR8  = register(C.XED_REG_AL)
-	regGPR16 = register(C.XED_REG_AX)
-	regGPR32 = register(C.XED_REG_EAX)
-	regGPR64 = register(C.XED_REG_RAX)
-	regXMM   = register(C.XED_REG_XMM0)
-	regYMM   = register(C.XED_REG_YMM0)
-	regZMM   = register(C.XED_REG_ZMM0)
-	regK     = register(C.XED_REG_K0)
+	regGPR8  = xedRegister(C.XED_REG_AL)
+	regGPR16 = xedRegister(C.XED_REG_AX)
+	regGPR32 = xedRegister(C.XED_REG_EAX)
+	regGPR64 = xedRegister(C.XED_REG_RAX)
+	regXMM   = xedRegister(C.XED_REG_XMM0)
+	regYMM   = xedRegister(C.XED_REG_YMM0)
+	regZMM   = xedRegister(C.XED_REG_ZMM0)
+	regK     = xedRegister(C.XED_REG_K0)
 )
 
 const (
-	xedRegInvalid = register(C.XED_REG_INVALID)
+	xedRegInvalid    = xedRegister(C.XED_REG_INVALID)
+	xedIclassInvalid = xedIclass(C.XED_ICLASS_INVALID)
 )
 
 var (
 	errEmpty = xedError(C.XED_ERROR_NONE)
 )
 
-func newXEDRegister(regName string, tmpbuf *buffer) register {
-	tmpbuf.SetCString(regName)
-	return register(C.str2xed_reg_enum_t(tmpbuf.CString()))
-}
-
 // String returns reg name.
-func (reg register) String() string {
+func (reg xedRegister) String() string {
 	return C.GoString(C.xed_reg_enum_t2str(C.xed_reg_enum_t(reg)))
 }
 
@@ -79,7 +75,7 @@ func (err xedError) Empty() bool {
 }
 
 func (err xedError) Error() string {
-	//TODO: check if XED does bound check for error codes.
+	// TODO: check if XED does bound check for error codes.
 	return "XED error: " + C.GoString(C.xed_error_enum_t2str(err.CValue()))
 }
 
@@ -95,6 +91,10 @@ func newXEDState64() xedState {
 	return xedState(state)
 }
 
+func (iclass xedIclass) String() string {
+	return C.GoString(C.xed_iclass_enum_t2str(iclass.CValue()))
+}
+
 func (iclass xedIclass) CValue() C.xed_iclass_enum_t {
 	return C.xed_iclass_enum_t(iclass)
 }
@@ -105,8 +105,10 @@ func newXEDIclass(name string, tmpbuf *buffer) xedIclass {
 	return xedIclass(iclass)
 }
 
-func newXEDInst(state *xedState, iclass xedIclass, req *EncodeRequest) xedInst {
+func newXEDInst(state *xedState, req *EncodeRequest) xedInst {
 	var inst C.xed_encoder_instruction_t
+
+	iclass := req.iclass
 
 	var eosz C.xed_uint_t
 	switch req.eosz {
@@ -183,6 +185,33 @@ func xedEncode(inst *xedInst, dstbuf *buffer) (int, error) {
 	return int(codeLen), nil
 }
 
+func xedMemOperand(req *EncodeRequest, bitSize int) C.xed_encoder_operand_t {
+	var disp C.xed_enc_displacement_t
+	disp.displacement = C.xed_uint64_t(req.ptr.Disp)
+	switch req.encoder.dispWidth {
+	case 8:
+		disp.displacement_bits = 8
+	case 32:
+		disp.displacement_bits = 32
+	default:
+		if req.ptr.Disp == 0 {
+			disp.displacement_bits = 0
+		} else if req.ptr.Disp >= -128 && req.ptr.Disp <= 127 {
+			disp.displacement_bits = 8
+		} else {
+			disp.displacement_bits = 32
+		}
+	}
+	base := registerByName[req.ptr.Base]
+	index := registerByName[req.ptr.Index]
+	return C.xed_mem_bisd(
+		C.xed_reg_enum_t(base),
+		C.xed_reg_enum_t(index),
+		C.xed_uint_t(req.ptr.Scale),
+		disp,
+		C.xed_uint_t(bitSize))
+}
+
 func xedOperand(req *EncodeRequest, index int) C.xed_encoder_operand_t {
 	switch req.tags[index] {
 	case argUint8:
@@ -191,30 +220,13 @@ func xedOperand(req *EncodeRequest, index int) C.xed_encoder_operand_t {
 		return C.xed_imm0(C.xed_uint64_t(req.imm), 32)
 	case argInt8:
 		return C.xed_simm0(C.xed_int32_t(req.imm), 8)
+	case argInt16:
+		return C.xed_simm0(C.xed_int32_t(req.imm), 16)
 	case argInt32:
 		return C.xed_simm0(C.xed_int32_t(req.imm), 32)
-	case argMem32:
-		var disp C.xed_enc_displacement_t
-		disp.displacement = C.xed_uint64_t(req.memDisp)
-		disp.displacement_bits = C.xed_uint32_t(req.memDispWidth)
-		return C.xed_mem_bisd(
-			C.xed_reg_enum_t(req.memBase),
-			C.xed_reg_enum_t(req.memIndex),
-			C.xed_uint_t(req.memScale),
-			disp,
-			32,
-		)
-	case argMem64:
-		var disp C.xed_enc_displacement_t
-		disp.displacement = C.xed_uint64_t(req.memDisp)
-		disp.displacement_bits = C.xed_uint32_t(req.memDispWidth)
-		return C.xed_mem_bisd(
-			C.xed_reg_enum_t(req.memBase),
-			C.xed_reg_enum_t(req.memIndex),
-			C.xed_uint_t(req.memScale),
-			disp,
-			64,
-		)
+	case argMem:
+		return xedMemOperand(req, int(req.memWidth))
+
 	default:
 		return C.xed_reg(C.xed_reg_enum_t(req.regs[index]))
 	}

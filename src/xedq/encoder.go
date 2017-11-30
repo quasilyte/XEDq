@@ -2,6 +2,7 @@ package xedq
 
 import (
 	"errors"
+	"io"
 )
 
 const (
@@ -11,38 +12,30 @@ const (
 
 var (
 	errEncReqConvert = errors.New("encoder: request conversion failed")
-	errEncArgc       = errors.New("encoder: invalid operands count")
-
-	errNameLen = errors.New("instruction name too long")
 )
 
-// InitTables prepares XED for encoding/decoding requests.
-// TODO: specify what operations are safe/unsafe prior to this call.
-func InitTables() {
-	xedTablesInit()
-}
+// MemExprParseFunc is a type of function that is used by Encoder
+// to handle MemExpr arguments.
+//
+// Expr argument is some kind of effective address expression
+// which syntax can vary.
+type MemExprParseFunc func(expr string) (Ptr, error)
 
 // Encoder is x86 instructions assembler.
 //
 // Should be created with NewEncoder.
+// Should be copied with Encoder.Copy.
 //
-// Non thread-safe due to memory sharing with all spawned EncodeRequest's.
-// Use Encoder.Copy to create a new instance of Encoder that have
-// same settings as the original, but can be safely transfered to
-// other goroutine.
-// As long as all Encoder requests are consumed by a single goroutine,
-// everything is fine.
+// Not thread-safe. Copy encoder, or share with mutex.
 type Encoder struct {
+	dispWidth int
+
 	tmpbuf buffer
 
 	mode xedState
 	err  error
-}
 
-// Copy returns Encoder deep copy.
-func (enc Encoder) Copy() Encoder {
-	enc.err = nil
-	return enc
+	MemExprParser MemExprParseFunc
 }
 
 // EncoderOption is a configuration function for NewEncoder.
@@ -64,7 +57,8 @@ func NewEncoder(options ...EncoderOption) *Encoder {
 	var enc Encoder
 
 	// Set defaults.
-	EncoderMode64(&enc)
+	enc.mode = newXEDState64()
+	enc.MemExprParser = IntelMemExprParse
 
 	for i := range options {
 		options[i](&enc)
@@ -73,38 +67,62 @@ func NewEncoder(options ...EncoderOption) *Encoder {
 	return &enc
 }
 
+// Copy returns Encoder deep copy.
+func (enc Encoder) Copy() Encoder {
+	// Implementation may change in future.
+	// Clients should not expect simple bitewise copy
+	// to be a valid deep copy forever.
+	return enc
+}
+
 // LastError returns last executed encoding request error.
 // Note that errors are not stacked up.
 func (enc *Encoder) LastError() error {
 	return enc.err
 }
 
+// SetDispWidth changes displacement encoding strategy.
+//
+// width values:
+//   0  - use smallest displacement size
+//   8  - 8bit displacement
+//   32 - 32bit displacement
+// All other values are treated as 0.
+func (enc Encoder) SetDispWidth(width uint8) {
+	switch width {
+	case 8, 32:
+		enc.dispWidth = int(width)
+	default:
+		enc.dispWidth = 0
+	}
+}
+
 // Request creates new encoding request for instruction of specified name.
 // See EncodingRequest.
 func (enc *Encoder) Request(name string) *EncodeRequest {
-	return &EncodeRequest{encoder: enc, name: name}
+	if len(name) > bufferCapacity {
+		return &EncodeRequest{encoder: enc, iclass: xedIclassInvalid}
+	}
+	return &EncodeRequest{
+		encoder: enc,
+		iclass:  newXEDIclass(name, &enc.tmpbuf),
+	}
 }
 
-// encode assembles single encode request.
-// On error, nil is returned and enc.err is set to associated error value.
-// Returned slice is not shared.
-
-// encode assembles single request to enc.tmpbuf.
-// Returns produced machine code length in bytes.
-// Caller should handle (consume) output right after the call.
-func (enc *Encoder) encode(req *EncodeRequest) (n int) {
-	if len(req.name) > bufferCapacity {
-		enc.err = errNameLen
-		return 0
-	}
-	if req.argc < 0 || req.argc > maxArgLimit {
-		enc.err = errEncArgc
-		return 0
-	}
-
-	iclass := newXEDIclass(req.name, &enc.tmpbuf)
-	inst := newXEDInst(&enc.mode, iclass, req)
+// encode assembles req and returns result in freshly allocated slice of bytes.
+func (enc *Encoder) encode(req *EncodeRequest) []byte {
+	var n int
+	inst := newXEDInst(&enc.mode, req)
 	n, enc.err = xedEncode(&inst, &enc.tmpbuf)
+	code := make([]byte, n)
+	copy(code, enc.tmpbuf.data[:])
+	return code
+}
 
-	return n
+// encodeTo assembles req and writes result to w.
+func (enc *Encoder) encodeTo(w io.Writer, req *EncodeRequest) (int, error) {
+	var n int
+	inst := newXEDInst(&enc.mode, req)
+	n, enc.err = xedEncode(&inst, &enc.tmpbuf)
+	return w.Write(enc.tmpbuf.data[:n])
 }

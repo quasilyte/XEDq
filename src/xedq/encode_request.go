@@ -7,25 +7,19 @@ import (
 	"strings"
 )
 
-// TODO: may want to reduce coupling between Encoder and EncodeRequest.
-// Benchmarks are needed to make decision making easier.
-// Also need to track allocations.
-
 // argTag represents instruction argument (operand) class.
 type argTag uint32
 
-// All valid argument classes.
+// Supported argument classes.
 const (
 	argEmpty argTag = iota
 	argReg
-	argMem8  // BYTE PTR
-	argMem16 // WORD PTR
-	argMem32 // DWORD PTR
-	argMem64 // QWORD PTR
+	argMem
 	argUint8
 	argUint32
 	argUint64
 	argInt8
+	argInt16
 	argInt32
 )
 
@@ -42,6 +36,21 @@ const (
 	eosz64
 )
 
+func (eosz effectiveOperandSize) String() string {
+	switch eosz {
+	case eosz8:
+		return "8"
+	case eosz16:
+		return "16"
+	case eosz32:
+		return "32"
+	case eosz64:
+		return "64"
+	default:
+		return "??"
+	}
+}
+
 // EncodeRequest is an instruction builder.
 //
 // Methods that have no "Set" prefix push argument
@@ -53,20 +62,14 @@ const (
 // instruction can be created by one of the Encode methods.
 type EncodeRequest struct {
 	encoder *Encoder // Encoder that spawned this EncodeRequest
-	name    string   // Name of the instruction
+	iclass  xedIclass
 
 	// Immediate operand payload.
 	// TODO: add second immediate field?
 	imm uint64
 
-	// Memory argument fields.
-	// There is always at most one memory argument.
-
-	memDisp      uint64   // Displacement amount
-	memBase      register // SIB - B
-	memIndex     register // SIB - I
-	memScale     uint8    // SIB - S
-	memDispWidth uint8    // 8/16/32/64
+	ptr      Ptr
+	memWidth uint16
 
 	// Holds each argument type.
 	tags [maxArgLimit]argTag
@@ -77,63 +80,44 @@ type EncodeRequest struct {
 	eosz effectiveOperandSize
 
 	// Register arguments.
-	regs [maxArgLimit]register
+	regs [maxArgLimit]xedRegister
 }
 
 // Reg pushes register with name regName to arguments list.
 func (req *EncodeRequest) Reg(regName string) *EncodeRequest {
-	req.pushReg(registerByName(regName, &req.encoder.tmpbuf))
+	req.pushReg(registerByName[regName])
 	return req
 }
 
-// Mem8 pushes 8bit memory indirect to arguments list.
+// Mem pushes memory indirect to arguments list.
 //
-// sibExpr format is akin to Intel addressing syntax:
-//   - "BASE"
-//   - "BASE+INDEX"
-//   - "INDEX*SCALE"
-//   - "BASE+INDEX*SCALE"
-// BASE and INDEX are any valid registers.
-// SCALE can be 1/2/4/8.
+// Width is a pointer size in bits.
+// Common values are:
+//   8   | BYTE PTR
+//   16  | WORD PTR
+//   32  | DWORD PTR
+//   64  | QWORD PTR
+//   80  | TBYTE PTR (x87)
+//   128 | XMMWORD PTR
+//   256 | YMMWORD PTR
+//   512 | ZMMWORD PTR
+func (req *EncodeRequest) Mem(width uint16, ptr Ptr) *EncodeRequest {
+	req.pushTag(argMem)
+	req.ptr = ptr
+	req.memWidth = width
+	return req
+}
+
+// MemExpr is like Mem, but uses mem expr string to specify effective address.
+// expr format/syntax depends on the Encoder.MemExprParser.
 //
-// Examples for sibExpr:
-//   "RAX"
-//   "RAX+RCX"
-//   "RDX*2"
-//   "RAX+RCX*4"
-//   "RAX+XMM0*4" // VSIB
-//
-// To set base/index/scale individually, one can call Mem8 with empty string
-// argument, and then use SetMemBase/SetMemIndex/SetMemScale to set
-// them ony-by-one.
-func (req *EncodeRequest) Mem8(sibExpr string) *EncodeRequest {
-	req.memBase, req.memIndex, req.memScale = parseSIBExpr(sibExpr, &req.encoder.tmpbuf)
-	req.pushTag(argMem8)
-	return req
-}
-
-// Mem16 pushes 16bit memory indirect to arguments list.
-// sibExpr has same format as in Mem8.
-func (req *EncodeRequest) Mem16(sibExpr string) *EncodeRequest {
-	req.memBase, req.memIndex, req.memScale = parseSIBExpr(sibExpr, &req.encoder.tmpbuf)
-	req.pushTag(argMem16)
-	return req
-}
-
-// Mem32 pushes 32bit memory indirect to arguments list.
-// sibExpr has same format as in Mem8.
-func (req *EncodeRequest) Mem32(sibExpr string) *EncodeRequest {
-	req.memBase, req.memIndex, req.memScale = parseSIBExpr(sibExpr, &req.encoder.tmpbuf)
-	req.pushTag(argMem32)
-	return req
-}
-
-// Mem64 pushes 64bit memory indirect to arguments list.
-// sibExpr has same format as in Mem8.
-func (req *EncodeRequest) Mem64(sibExpr string) *EncodeRequest {
-	req.memBase, req.memIndex, req.memScale = parseSIBExpr(sibExpr, &req.encoder.tmpbuf)
-	req.pushTag(argMem64)
-	return req
+// Panics if expr string is malformed.
+func (req *EncodeRequest) MemExpr(width uint16, expr string) *EncodeRequest {
+	ptr, err := req.encoder.MemExprParser(expr)
+	if err != nil {
+		panic(err)
+	}
+	return req.Mem(width, ptr)
 }
 
 // Uint8 pushes 8bit unsigned immediate to argument list.
@@ -163,30 +147,21 @@ func (req *EncodeRequest) Int8(v int8) *EncodeRequest {
 	return req
 }
 
+// Int16 pushes 16bit signed immediate to argument list.
+// Notice: current implementation is limited to single immediate, so
+// instructions like ENTER are not encodable yet.
+func (req *EncodeRequest) Int16(v int16) *EncodeRequest {
+	req.imm = uint64(v)
+	req.pushTag(argInt16)
+	return req
+}
+
 // Int32 pushes 32bit signed immediate to argument list.
 // Notice: current implementation is limited to single immediate, so
 // instructions like ENTER are not encodable yet.
 func (req *EncodeRequest) Int32(v int32) *EncodeRequest {
 	req.imm = uint64(v)
 	req.pushTag(argInt32)
-	return req
-}
-
-// SetMemBase assigns regName as a base addressing register.
-func (req *EncodeRequest) SetMemBase(regName string) *EncodeRequest {
-	req.memBase = registerByName(regName, &req.encoder.tmpbuf)
-	return req
-}
-
-// SetMemIndex assigns regName as scaled indexing register.
-func (req *EncodeRequest) SetMemIndex(regName string) *EncodeRequest {
-	req.memIndex = registerByName(regName, &req.encoder.tmpbuf)
-	return req
-}
-
-// SetMemScale sets indexing register scaling to specified value.
-func (req *EncodeRequest) SetMemScale(scale int) *EncodeRequest {
-	req.memScale = uint8(scale)
 	return req
 }
 
@@ -214,34 +189,16 @@ func (req *EncodeRequest) SetEosz64() *EncodeRequest {
 	return req
 }
 
-// SetDisp8 sets memory operand displacement to 8bit value disp.
-func (req *EncodeRequest) SetDisp8(disp uint8) *EncodeRequest {
-	req.memDisp = uint64(disp)
-	req.memDispWidth = 8
-	return req
-}
-
-// SetDisp32 sets memory operand displacement to 32bit value disp.
-func (req *EncodeRequest) SetDisp32(disp uint32) *EncodeRequest {
-	req.memDisp = uint64(disp)
-	req.memDispWidth = 32
-	return req
-}
-
 // Encode executes encode request and returns result "as it".
 func (req *EncodeRequest) Encode() []byte {
-	n := req.encoder.encode(req)
-	code := make([]byte, n)
-	copy(code, req.encoder.tmpbuf.data[:])
-	return code
+	return req.encoder.encode(req)
 }
 
 // EncodeTo is like Encode, but instead of allocating new byte slice,
 // it writes output to w.
-// Returns w.Write result.
+// Returns w.Write() result.
 func (req *EncodeRequest) EncodeTo(w io.Writer) (int, error) {
-	n := req.encoder.encode(req)
-	return w.Write(req.encoder.tmpbuf.data[:n])
+	return req.encoder.encodeTo(w, req)
 }
 
 // EncodeHexString executes encode request and formats result as a hex string.
@@ -260,8 +217,15 @@ func (req *EncodeRequest) EncodeHexString() string {
 // String returns assembly-like instruction representation.
 // Intended for debugging and pretty-printing (useful in tests).
 func (req *EncodeRequest) String() string {
+	var name string
+	eosz := req.eosz.String()
+	if eosz != "" {
+		name = req.iclass.String() + "/" + eosz
+	} else {
+		name = req.iclass.String()
+	}
 	if req.argc == 0 {
-		return req.name
+		return name
 	}
 
 	args := make([]string, req.argc)
@@ -269,13 +233,11 @@ func (req *EncodeRequest) String() string {
 	for i := 0; i < int(req.argc); i++ {
 		switch req.tags[i] {
 		default:
-			args[i] = "<?>"
+			args[i] = "??"
 		case argReg:
 			args[i] = req.regs[i].String()
-		case argMem32:
-			args[i] = "mem32" + sibString(req.memBase, req.memIndex, req.memScale)
-		case argMem64:
-			args[i] = "mem64" + sibString(req.memBase, req.memIndex, req.memScale)
+		case argMem:
+			args[i] = memExprString(req)
 		case argUint8:
 			args[i] = fmt.Sprintf("uint8(%#x)", req.imm)
 		case argUint32:
@@ -284,12 +246,14 @@ func (req *EncodeRequest) String() string {
 			args[i] = fmt.Sprintf("uint64(%#x)", req.imm)
 		case argInt8:
 			args[i] = fmt.Sprintf("int8(%#x)", int32(req.imm))
+		case argInt16:
+			args[i] = fmt.Sprintf("int16(%#x)", int32(req.imm))
 		case argInt32:
 			args[i] = fmt.Sprintf("int32(%#x)", int32(req.imm))
 		}
 	}
 
-	return req.name + " " + strings.Join(args, ", ")
+	return name + " " + strings.Join(args, ", ")
 }
 
 func (req *EncodeRequest) pushTag(tag argTag) {
@@ -297,7 +261,7 @@ func (req *EncodeRequest) pushTag(tag argTag) {
 	req.argc++
 }
 
-func (req *EncodeRequest) pushReg(reg register) {
+func (req *EncodeRequest) pushReg(reg xedRegister) {
 	req.regs[req.argc] = reg
 	req.pushTag(argReg)
 }
