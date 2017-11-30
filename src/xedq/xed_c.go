@@ -15,8 +15,7 @@ import (
 // Most definitions are prefixed with "xed" to make it clear
 // that those functions are low-level and can be unsafe.
 
-// register holds XED register ID.
-// TODO: rename to xedRegister?
+// xedRegister holds XED register ID.
 type xedRegister uint16
 
 // Constants that define register indexes from XED xed_reg_enum_t.
