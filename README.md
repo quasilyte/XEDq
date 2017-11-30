@@ -12,9 +12,19 @@ When the time is right, this warning will go away.
 Convenient library built on top of **Intel XED** for encoding/decoding of 
 [X86](https://ru.wikipedia.org/wiki/X86) instructions.
 
-Focused around two use cases:
-1. Manually-coded expressions: succinct and readable API, easy to use.
-2. Programmatically built expressions: composable API, easy to extend.
+**XEDq** is a good choice for building command line utility that
+works with X86 assembly or machine code.
+
+Example use cases:
+- External assembler/disassembler validation:
+  - Tests data/input/output generation.
+  - End-to-end analysis.
+- Framework for X86 assembler/disassembler written in Go.
+
+Main focus is around usability and convenience, rather than performance:
+- Fluent interface.
+- Integrated memory expression parser.
+- Automatical resolving of some input parameters (can be disabled).
 
 ## Examples
 
@@ -23,10 +33,10 @@ Simple usage:
 ```go
 encoder := xedq.NewEncoder()
 
-add := encoder.Request("ADD").Reg("EAX").Mem32("EDX+ECX*4")
+add := encoder.Request("ADD").Reg("EAX").MemExpr("DWORD PTR [EDX+ECX*4]")
 fmt.Println(add.EncodeHexString()) // => "6703048a"
 fmt.Println(add.Encode())          // => [103 3 4 138]
-fmt.Println(add.String())          // => "ADD EAX, mem32[EDX+ECX*4]"
+fmt.Println(add.String())          // => "ADD EAX, DWORD PTR [EDX+ECX*4]"
 
 // AVX512 instruction.
 vaddpd := encoder.Request("VADDPD").Reg("XMM0").Reg("K4").Reg("XMM10").Reg("XMM20")
