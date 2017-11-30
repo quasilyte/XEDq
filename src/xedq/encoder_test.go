@@ -28,6 +28,7 @@ func TestEncoderMode32Eosz8(t *testing.T) {
 		"82f10f": {req("XOR").Reg("CL").Uint8(0x0f)},
 		"340f":   {req("XOR").Reg("AL").Uint8(0x0f)},
 		"30c0":   {req("XOR").Reg("AL").Reg("AL")},
+		"7712":   {req("JNBE").Rel8(0x12)},
 	})
 }
 
@@ -47,6 +48,7 @@ func TestEncoderMode32Eosz16(t *testing.T) {
 		"6683f10f": {req("XOR").Reg("CX").Uint8(0x0f)},
 		"6683f00f": {req("XOR").Reg("AX").Uint8(0x0f)},
 		"6631c0":   {req("XOR").Reg("AX").Reg("AX")},
+		"66e83412": {req("CALL_NEAR").Rel16(0x1234)},
 	})
 }
 
@@ -69,6 +71,7 @@ func TestEncoderMode32Eosz32(t *testing.T) {
 		"83f00f":       {req("XOR").Reg("EAX").Uint8(0x0f)},
 		"35f0f00000":   {req("XOR").Reg("EAX").Uint32(0xf0f0)},
 		"31c0":         {req("XOR").Reg("EAX").Reg("EAX")},
+		"e834120000":   {req("CALL_NEAR").Rel32(0x1234)},
 	})
 }
 
@@ -88,6 +91,7 @@ func TestEncoderMode64Eosz8(t *testing.T) {
 		"80f10f": {req("XOR").Reg("CL").Uint8(0x0f)},
 		"340f":   {req("XOR").Reg("AL").Uint8(0x0f)},
 		"30c0":   {req("XOR").Reg("AL").Reg("AL")},
+		"7712":   {req("JNBE").Rel8(0x12)},
 	})
 }
 
@@ -133,6 +137,7 @@ func TestEncoderMode64Eosz32(t *testing.T) {
 		"678b0491":       {req("MOV").Reg("EAX").MemExpr(32, "ECX+EDX*4")},
 		"678b449144":     {req("MOV").Reg("EAX").MemExpr(32, "ECX+EDX*4+0x44")},
 		"678d0488":       {req("LEA").Reg("EAX").MemExpr(32, "EAX+ECX*4")},
+		"e834120000":     {req("CALL_NEAR").Rel32(0x1234)},
 	})
 }
 

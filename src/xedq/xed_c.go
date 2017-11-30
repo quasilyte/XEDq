@@ -225,6 +225,12 @@ func xedOperand(req *EncodeRequest, index int) C.xed_encoder_operand_t {
 		return C.xed_simm0(C.xed_int32_t(req.imm), 32)
 	case argMem:
 		return xedMemOperand(req, int(req.memWidth))
+	case argRel8:
+		return C.xed_relbr(C.xed_int32_t(req.rel), 8)
+	case argRel16:
+		return C.xed_relbr(C.xed_int32_t(req.rel), 16)
+	case argRel32:
+		return C.xed_relbr(C.xed_int32_t(req.rel), 32)
 
 	default:
 		return C.xed_reg(C.xed_reg_enum_t(req.regs[index]))

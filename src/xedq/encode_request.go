@@ -21,6 +21,9 @@ const (
 	argInt8
 	argInt16
 	argInt32
+	argRel8
+	argRel16
+	argRel32
 )
 
 // effectiveOperandSize is XED's EOSZ attribute.
@@ -67,6 +70,8 @@ type EncodeRequest struct {
 	// Immediate operand payload.
 	// TODO: add second immediate field?
 	imm uint64
+
+	rel int32
 
 	ptr      Ptr
 	memWidth uint16
@@ -165,6 +170,27 @@ func (req *EncodeRequest) Int32(v int32) *EncodeRequest {
 	return req
 }
 
+// Rel8 pushes 8bit branch displacement.
+func (req *EncodeRequest) Rel8(v int8) *EncodeRequest {
+	req.rel = int32(v)
+	req.pushTag(argRel8)
+	return req
+}
+
+// Rel16 pushes 16bit branch displacement.
+func (req *EncodeRequest) Rel16(v int16) *EncodeRequest {
+	req.rel = int32(v)
+	req.pushTag(argRel16)
+	return req
+}
+
+// Rel32 pushes 32bit branch displacement.
+func (req *EncodeRequest) Rel32(v int32) *EncodeRequest {
+	req.rel = v
+	req.pushTag(argRel32)
+	return req
+}
+
 // SetEosz8 sets instruction effective operand size to 8bit.
 func (req *EncodeRequest) SetEosz8() *EncodeRequest {
 	req.eosz = eosz8
@@ -250,6 +276,12 @@ func (req *EncodeRequest) String() string {
 			args[i] = fmt.Sprintf("int16(%#x)", int32(req.imm))
 		case argInt32:
 			args[i] = fmt.Sprintf("int32(%#x)", int32(req.imm))
+		case argRel8:
+			args[i] = fmt.Sprintf("rel8(%#x)", req.rel)
+		case argRel16:
+			args[i] = fmt.Sprintf("rel16(%#x)", req.rel)
+		case argRel32:
+			args[i] = fmt.Sprintf("rel32(%#x)", req.rel)
 		}
 	}
 
