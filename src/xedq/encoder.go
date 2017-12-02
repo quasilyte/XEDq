@@ -75,9 +75,8 @@ func (enc Encoder) Copy() Encoder {
 	return enc
 }
 
-// LastError returns last executed encoding request error.
-// Note that errors are not stacked up.
-func (enc *Encoder) LastError() error {
+// Err returns the last executed encoding request error.
+func (enc *Encoder) Err() error {
 	return enc.err
 }
 
