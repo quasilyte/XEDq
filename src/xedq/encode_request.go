@@ -84,6 +84,8 @@ type EncodeRequest struct {
 
 	eosz effectiveOperandSize
 
+	dispWidth int
+
 	// Register arguments.
 	regs [maxArgLimit]xedRegister
 }
@@ -213,6 +215,22 @@ func (req *EncodeRequest) SetEosz32() *EncodeRequest {
 func (req *EncodeRequest) SetEosz64() *EncodeRequest {
 	req.eosz = eosz64
 	return req
+}
+
+// SetDispWidth changes displacement encoding strategy.
+//
+// width values:
+//   0  - use smallest displacement size
+//   8  - 8bit displacement
+//   32 - 32bit displacement
+// All other values are treated as 0.
+func (req *EncodeRequest) SetDispWidth(width uint8) {
+	switch width {
+	case 8, 32:
+		req.dispWidth = int(width)
+	default:
+		req.dispWidth = 0
+	}
 }
 
 // Encode executes encode request and returns result "as it".

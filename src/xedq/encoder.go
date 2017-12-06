@@ -28,8 +28,6 @@ type MemExprParseFunc func(expr string) (Ptr, error)
 //
 // Not thread-safe. Copy encoder, or share with mutex.
 type Encoder struct {
-	dispWidth int
-
 	tmpbuf buffer
 
 	mode xedState
@@ -78,22 +76,6 @@ func (enc Encoder) Copy() Encoder {
 // Err returns the last executed encoding request error.
 func (enc *Encoder) Err() error {
 	return enc.err
-}
-
-// SetDispWidth changes displacement encoding strategy.
-//
-// width values:
-//   0  - use smallest displacement size
-//   8  - 8bit displacement
-//   32 - 32bit displacement
-// All other values are treated as 0.
-func (enc Encoder) SetDispWidth(width uint8) {
-	switch width {
-	case 8, 32:
-		enc.dispWidth = int(width)
-	default:
-		enc.dispWidth = 0
-	}
 }
 
 // Request creates new encoding request for instruction of specified name.

@@ -187,7 +187,7 @@ func xedEncode(inst *xedInst, dstbuf *buffer) (int, error) {
 func xedMemOperand(req *EncodeRequest, bitSize int) C.xed_encoder_operand_t {
 	var disp C.xed_enc_displacement_t
 	disp.displacement = C.xed_uint64_t(req.ptr.Disp)
-	switch req.encoder.dispWidth {
+	switch req.dispWidth {
 	case 8:
 		disp.displacement_bits = 8
 	case 32:

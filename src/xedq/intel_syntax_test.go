@@ -10,6 +10,7 @@ func TestIntelMemExprParse(t *testing.T) {
 		"RCX":        {"RCX", "", 0, 0},
 		"R8":         {"R8", "", 0, 0},
 		"RCX+0":      {"RCX", "", 0, 0},
+		"RDX+8":      {"RDX", "", 0, 8},
 		"RCX+1750":   {"RCX", "", 0, 1750},
 		"RCX+0x0":    {"RCX", "", 0, 0},
 		"RCX+0xf0":   {"RCX", "", 0, 0xf0},
